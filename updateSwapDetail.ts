@@ -171,3 +171,90 @@ describe('updateSwapDetail Controller', () => {
     });
   });
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+======================================================
+
+
+describe('Error Handling with Custom Properties', () => {
+  it('should extract statusCode when present on error object', async () => {
+    const swapCd = '123';
+    const updateData = { field1: 'value1' };
+    mockRequest.params = { swapCd };
+    mockRequest.body = updateData;
+
+    const mockError = new Error('Custom error');
+    (mockError as any).statusCode = httpStatusCode.FORBIDDEN; // Custom status code
+    (updateSwapData as jest.Mock).mockRejectedValue(mockError);
+
+    await updateSwapDetail(mockRequest as Request, mockResponse as Response);
+
+    expect(logError).toHaveBeenCalledWith(
+      mockError,
+      expect.objectContaining({
+        statusCode: `${httpStatusCode.FORBIDDEN}`, // Should use the custom status code
+        reasonCode: 'UNKNOWN_REASON' // Default reason code
+      })
+    );
+  });
+
+  it('should extract reasonCode when present on error object', async () => {
+    const swapCd = '123';
+    const updateData = { field1: 'value1' };
+    mockRequest.params = { swapCd };
+    mockRequest.body = updateData;
+
+    const mockError = new Error('Custom error');
+    (mockError as any).reasonCode = 'VALIDATION_FAILED'; // Custom reason code
+    (updateSwapData as jest.Mock).mockRejectedValue(mockError);
+
+    await updateSwapDetail(mockRequest as Request, mockResponse as Response);
+
+    expect(logError).toHaveBeenCalledWith(
+      mockError,
+      expect.objectContaining({
+        statusCode: `${httpStatusCode.INTERNAL_SERVER_ERROR}`, // Default status code
+        reasonCode: 'VALIDATION_FAILED' // Should use the custom reason code
+      })
+    );
+  });
+
+  it('should handle error with both custom statusCode and reasonCode', async () => {
+    const swapCd = '123';
+    const updateData = { field1: 'value1' };
+    mockRequest.params = { swapCd };
+    mockRequest.body = updateData;
+
+    const mockError = new Error('Complete custom error');
+    (mockError as any).statusCode = httpStatusCode.CONFLICT;
+    (mockError as any).reasonCode = 'DATA_CONFLICT';
+    (updateSwapData as jest.Mock).mockRejectedValue(mockError);
+
+    await updateSwapDetail(mockRequest as Request, mockResponse as Response);
+
+    expect(logError).toHaveBeenCalledWith(
+      mockError,
+      expect.objectContaining({
+        statusCode: `${httpStatusCode.CONFLICT}`,
+        reasonCode: 'DATA_CONFLICT'
+      })
+    );
+  });
+});
