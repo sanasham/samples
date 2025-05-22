@@ -1,169 +1,143 @@
 import { Request, Response } from 'express';
-import { swapDetails, extractQueryParams } from './swapDetailsController';
-import { getSwapDetails } from '../service/swapDetailsService';
-import { logInfo, logError } from '../logger';
-import { httpStatusCode } from '../types/enum/httpStatusCode';
+import swapDetails from '../src/controller/getSwapDetails';
+import { getSwapDetailsData } from '../src/service/swapDetailsService';
+import { logInfo, logError } from '../src/logger';
+import { httpStatusCode } from '../src/types/enum/httpStatusCode';
 
-// Mock the dependencies
-jest.mock('../service/swapDetailsService');
-jest.mock('../logger');
+// Mock dependencies
+jest.mock('../src/service/swapDetailsService');
+jest.mock('../src/logger');
+jest.mock('../src/middleware/paramsValidator', () => ({
+  extractQueryParams: jest.fn(),
+}));
 
-const mockRequest = (query: any = {}): Request =>
-  ({
-    query,
-  } as unknown as Request);
+const mockExtractQueryParams = require('../src/middleware/paramsValidator').extractQueryParams;
 
-const mockResponse = (): Response => {
-  const res: Partial<Response> = {};
-  res.status = jest.fn().mockReturnValue(res);
-  res.json = jest.fn().mockReturnValue(res);
-  return res as Response;
-};
+describe('swapDetails controller', () => {
+  let req: Partial<Request>;
+  let res: Partial<Response>;
+  let mockJson: jest.Mock;
+  let mockStatus: jest.Mock;
 
-describe('extractQueryParams', () => {
-  it('should extract and convert all valid query parameters', () => {
-    const req = mockRequest({
-      SwapCd: '123',
-      Brand: '456',
-      Channel: 'web',
-      Term: '789',
-      StartUt: '2023-01-01T00:00:00Z',
-      EndUt: '2023-01-02T00:00:00Z',
-    });
-
-    const result = extractQueryParams(req);
-
-    expect(result).toEqual({
-      SwapCd: 123,
-      Brand: 456,
-      Channel: 'web',
-      Term: 789,
-      StartUt: new Date('2023-01-01T00:00:00Z'),
-      EndUt: new Date('2023-01-02T00:00:00Z'),
-    });
-  });
-
-  it('should handle undefined values when parameters are missing', () => {
-    const req = mockRequest({
-      Channel: 'mobile',
-    });
-
-    const result = extractQueryParams(req);
-
-    expect(result).toEqual({
-      SwapCd: undefined,
-      Brand: undefined,
-      Channel: 'mobile',
-      Term: undefined,
-      StartUt: undefined,
-      EndUt: undefined,
-    });
-  });
-
-  it('should handle invalid number values', () => {
-    const req = mockRequest({
-      SwapCd: 'invalid',
-      Brand: '456',
-    });
-
-    const result = extractQueryParams(req);
-
-    expect(result.SwapCd).toBeNaN();
-    expect(result.Brand).toBe(456);
-  });
-});
-
-describe('swapDetails', () => {
   beforeEach(() => {
+    mockJson = jest.fn();
+    mockStatus = jest.fn(() => ({ json: mockJson }));
+    
+    req = {
+      query: { id: '123' },
+    };
+    
+    res = {
+      status: mockStatus,
+      json: mockJson,
+    };
+
     jest.clearAllMocks();
   });
 
-  it('should return swap details when data is available', async () => {
-    const mockData = [{ id: 1, name: 'Test Swap' }];
-    (getSwapDetails as jest.Mock).mockResolvedValue(mockData);
+  it('should successfully get swap details and return 200 status', async () => {
+    const mockQueryParams = { id: '123' };
+    const mockSwapDetails = { id: '123', amount: 100 };
+    
+    mockExtractQueryParams.mockReturnValue(mockQueryParams);
+    (getSwapDetailsData as jest.Mock).mockResolvedValue(mockSwapDetails);
 
-    const req = mockRequest({ SwapCd: '123' });
-    const res = mockResponse();
+    await swapDetails(req as Request, res as Response);
 
-    await swapDetails(req, res);
-
+    expect(mockExtractQueryParams).toHaveBeenCalledWith(req);
     expect(logInfo).toHaveBeenCalledWith({
-      message: expect.stringContaining('Request received for getSwapDetails'),
+      message: 'Request received for getSwapDetails with query params: {"id":"123"}',
       source: 'swapDetailsController.ts >> getSwapDetails',
-      statusCode: `${httpStatusCode.OK}`,
+      statusCode: httpStatusCode.OK,
     });
-
-    expect(getSwapDetails).toHaveBeenCalledWith({
-      SwapCd: 123,
-      Brand: undefined,
-      Channel: undefined,
-      Term: undefined,
-      StartUt: undefined,
-      EndUt: undefined,
-    });
-
-    expect(res.status).toHaveBeenCalledWith(httpStatusCode.OK);
-    expect(res.json).toHaveBeenCalledWith(mockData);
+    expect(getSwapDetailsData).toHaveBeenCalledWith(mockQueryParams);
+    expect(mockStatus).toHaveBeenCalledWith(httpStatusCode.OK);
+    expect(mockJson).toHaveBeenCalledWith(mockSwapDetails);
   });
 
-  it('should return 404 when no data is available', async () => {
-    (getSwapDetails as jest.Mock).mockResolvedValue([]);
+  it('should handle "No matching swap details found" error and return 404 status', async () => {
+    const mockQueryParams = { id: '123' };
+    const error = new Error('No matching swap details found.');
+    
+    mockExtractQueryParams.mockReturnValue(mockQueryParams);
+    (getSwapDetailsData as jest.Mock).mockRejectedValue(error);
 
-    const req = mockRequest({ SwapCd: '123' });
-    const res = mockResponse();
+    await swapDetails(req as Request, res as Response);
 
-    await swapDetails(req, res);
-
-    expect(res.status).toHaveBeenCalledWith(httpStatusCode.NOT_FOUND);
-    expect(res.json).toHaveBeenCalledWith({ message: 'No items available.' });
-  });
-
-  it('should handle errors and return 500', async () => {
-    const mockError = new Error('Database error');
-    (getSwapDetails as jest.Mock).mockRejectedValue(mockError);
-
-    const req = mockRequest({ SwapCd: '123' });
-    const res = mockResponse();
-
-    await swapDetails(req, res);
-
-    expect(logError).toHaveBeenCalledWith(mockError, {
+    expect(logError).toHaveBeenCalledWith(error, {
       message: 'Error occurred while fetching swap details.',
       source: 'swapDetailsController.ts >> getSwapDetails >> Catch Block',
-      statusCode: `${httpStatusCode.INTERNAL_SERVER_ERROR}`,
+      statusCode: httpStatusCode.INTERNAL_SERVER_ERROR,
       reasonCode: 'FETCH_SWAP_DETAILS_ERROR',
     });
-
-    expect(res.status).toHaveBeenCalledWith(
-      httpStatusCode.INTERNAL_SERVER_ERROR
-    );
-    expect(res.json).toHaveBeenCalledWith({
-      message: 'Internal server error occurred while fetching swap details.',
-      error: 'Database error',
+    expect(mockStatus).toHaveBeenCalledWith(httpStatusCode.NOT_FOUND);
+    expect(mockJson).toHaveBeenCalledWith({
+      message: 'No matching swap details found.',
     });
   });
 
-  it('should handle unknown errors', async () => {
-    (getSwapDetails as jest.Mock).mockRejectedValue('Some non-error value');
+  it('should handle general errors and return 500 status', async () => {
+    const mockQueryParams = { id: '123' };
+    const error = new Error('Database connection failed');
+    
+    mockExtractQueryParams.mockReturnValue(mockQueryParams);
+    (getSwapDetailsData as jest.Mock).mockRejectedValue(error);
 
-    const req = mockRequest({ SwapCd: '123' });
-    const res = mockResponse();
+    await swapDetails(req as Request, res as Response);
 
-    await swapDetails(req, res);
-
-    expect(logError).toHaveBeenCalledWith(expect.any(Error), {
+    expect(logError).toHaveBeenCalledWith(error, {
       message: 'Error occurred while fetching swap details.',
       source: 'swapDetailsController.ts >> getSwapDetails >> Catch Block',
-      statusCode: `${httpStatusCode.INTERNAL_SERVER_ERROR}`,
+      statusCode: httpStatusCode.INTERNAL_SERVER_ERROR,
       reasonCode: 'FETCH_SWAP_DETAILS_ERROR',
     });
-
-    expect(res.status).toHaveBeenCalledWith(
-      httpStatusCode.INTERNAL_SERVER_ERROR
-    );
-    expect(res.json).toHaveBeenCalledWith({
+    expect(mockStatus).toHaveBeenCalledWith(httpStatusCode.INTERNAL_SERVER_ERROR);
+    expect(mockJson).toHaveBeenCalledWith({
       message: 'Internal server error occurred while fetching swap details.',
-      error: 'Unknown error.',
+      error: 'Database connection failed',
+    });
+  });
+
+  it('should handle unknown errors and return 500 status', async () => {
+    const mockQueryParams = { id: '123' };
+    const error = 'Some string error';
+    
+    mockExtractQueryParams.mockReturnValue(mockQueryParams);
+    (getSwapDetailsData as jest.Mock).mockRejectedValue(error);
+
+    await swapDetails(req as Request, res as Response);
+
+    expect(logError).toHaveBeenCalledWith(new Error('Unknown error occurred'), {
+      message: 'Error occurred while fetching swap details.',
+      source: 'swapDetailsController.ts >> getSwapDetails >> Catch Block',
+      statusCode: httpStatusCode.INTERNAL_SERVER_ERROR,
+      reasonCode: 'FETCH_SWAP_DETAILS_ERROR',
+    });
+    expect(mockStatus).toHaveBeenCalledWith(httpStatusCode.INTERNAL_SERVER_ERROR);
+    expect(mockJson).toHaveBeenCalledWith({
+      message: 'Internal server error occurred while fetching swap details.',
+      error: 'Unknown error',
+    });
+  });
+
+  it('should handle errors in query parameter extraction', async () => {
+    const error = new Error('Invalid query parameters');
+    mockExtractQueryParams.mockImplementation(() => {
+      throw error;
+    });
+
+    await swapDetails(req as Request, res as Response);
+
+    expect(logError).toHaveBeenCalledWith(error, {
+      message: 'Error occurred while fetching swap details.',
+      source: 'swapDetailsController.ts >> getSwapDetails >> Catch Block',
+      statusCode: httpStatusCode.INTERNAL_SERVER_ERROR,
+      reasonCode: 'FETCH_SWAP_DETAILS_ERROR',
+    });
+    expect(mockStatus).toHaveBeenCalledWith(httpStatusCode.INTERNAL_SERVER_ERROR);
+    expect(mockJson).toHaveBeenCalledWith({
+      message: 'Internal server error occurred while fetching swap details.',
+      error: 'Invalid query parameters',
     });
   });
 });
