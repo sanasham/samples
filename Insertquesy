@@ -1,0 +1,97 @@
+describe('InsertRecordQuery', () => {
+  const baseDetails = {
+    SwapCd: 'SW123',
+    Brand: 'TestBrand',
+    Channel: 'online',
+    Term: 12,
+    EndDt: '2023-12-31'
+  };
+
+  describe('Valid inputs', () => {
+    it('should generate correct SQL query with number Term and string EndDt', () => {
+      const result = InsertRecordQuery(baseDetails);
+      
+      expect(result).toContain('INSERT INTO [MPMT].[dbo].[SwapDetails]');
+      expect(result).toContain('SW123');
+      expect(result).toContain('TestBrand');
+      expect(result).toContain('online');
+      expect(result).toContain('12');
+      expect(result).toContain('2023-12-31');
+      expect(result).toContain('GETDATE()');
+      expect(result).toContain('OUTPUT INSERTED.*');
+    });
+
+    it('should handle numeric string Term', () => {
+      const details = { ...baseDetails, Term: '24' };
+      const result = InsertRecordQuery(details);
+      expect(result).toContain('24');
+    });
+
+    it('should handle Date object for EndDt', () => {
+      const date = new Date('2024-01-01');
+      const details = { ...baseDetails, EndDt: date };
+      const result = InsertRecordQuery(details);
+      expect(result).toContain(date.toISOString());
+    });
+
+    it('should handle offline channel', () => {
+      const details = { ...baseDetails, Channel: 'offline' };
+      const result = InsertRecordQuery(details);
+      expect(result).toContain('offline');
+    });
+  });
+
+  describe('Error handling', () => {
+    it('should throw error for invalid EndDt string', () => {
+      const details = { ...baseDetails, EndDt: 'invalid-date' };
+      expect(() => InsertRecordQuery(details)).toThrow('Invalid EndDt format');
+    });
+
+    it('should throw error for non-string/non-Date EndDt', () => {
+      const details = { ...baseDetails, EndDt: 12345 };
+      expect(() => InsertRecordQuery(details)).toThrow('Invalid EndDt format');
+    });
+
+    it('should throw error for non-numeric Term string', () => {
+      const details = { ...baseDetails, Term: 'twelve' };
+      expect(() => InsertRecordQuery(details)).toThrow();
+    });
+  });
+
+  describe('Update swap details', () => {
+    // Mocking the API call for update
+    it('should handle update request with Channel and Term', async () => {
+      const mockResponse = { status: 200, data: { message: 'Updated successfully' } };
+      axios.put = jest.fn().mockResolvedValue(mockResponse);
+      
+      const response = await axios.put(
+        'http://localhost:8085/api/v1/swap-details/1601',
+        {
+          Channel: 'offline',
+          Term: 25
+        }
+      );
+      
+      expect(response.status).toBe(200);
+      expect(axios.put).toHaveBeenCalledWith(
+        'http://localhost:8085/api/v1/swap-details/1601',
+        {
+          Channel: 'offline',
+          Term: 25
+        }
+      );
+    });
+
+    it('should handle API errors', async () => {
+      axios.put = jest.fn().mockRejectedValue(new Error('Network Error'));
+      
+      await expect(axios.put(
+        'http://localhost:8085/api/v1/swap-details/1601',
+        {
+          Channel: 'offline',
+          Term: 25
+        }
+      )).rejects.toThrow('Network Error');
+    });
+  });
+});
