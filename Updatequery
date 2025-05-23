@@ -1,0 +1,83 @@
+describe('updateSwapDetails', () => {
+  describe('Valid updates', () => {
+    it('should generate correct SQL for string field update', () => {
+      const result = updateSwapDetails(1601, { Channel: 'offline' });
+      expect(result).toBe(
+        `UPDATE [MPMT].[db0].[SwapDetails] SET Channel = 'offline' OUTPUT INSERTED.* WHERE SwapCd = 1601`
+      );
+    });
+
+    it('should generate correct SQL for number field update', () => {
+      const result = updateSwapDetails(1601, { Term: 25 });
+      expect(result).toBe(
+        `UPDATE [MPMT].[db0].[SwapDetails] SET Term = 25 OUTPUT INSERTED.* WHERE SwapCd = 1601`
+      );
+    });
+
+    it('should generate correct SQL for Date field update', () => {
+      const testDate = new Date('2023-12-31');
+      const result = updateSwapDetails(1601, { EndDt: testDate });
+      expect(result).toBe(
+        `UPDATE [MPMT].[db0].[SwapDetails] SET EndDt = '${testDate.toISOString()}' OUTPUT INSERTED.* WHERE SwapCd = 1601`
+      );
+    });
+
+    it('should handle multiple field updates', () => {
+      const testDate = new Date('2023-12-31');
+      const result = updateSwapDetails(1601, { 
+        Channel: 'offline',
+        Term: 25,
+        EndDt: testDate
+      });
+      
+      // The order of fields might vary, so we need to check parts
+      expect(result).toContain(`UPDATE [MPMT].[db0].[SwapDetails] SET`);
+      expect(result).toContain(`Channel = 'offline'`);
+      expect(result).toContain(`Term = 25`);
+      expect(result).toContain(`EndDt = '${testDate.toISOString()}'`);
+      expect(result).toContain(`OUTPUT INSERTED.* WHERE SwapCd = 1601`);
+    });
+
+    it('should handle empty update object', () => {
+      const result = updateSwapDetails(1601, {});
+      expect(result).toBe(
+        `UPDATE [MPMT].[db0].[SwapDetails] SET  OUTPUT INSERTED.* WHERE SwapCd = 1601`
+      );
+    });
+  });
+
+  describe('Edge cases', () => {
+    it('should handle null values', () => {
+      const result = updateSwapDetails(1601, { Channel: null });
+      expect(result).toBe(
+        `UPDATE [MPMT].[db0].[SwapDetails] SET Channel = null OUTPUT INSERTED.* WHERE SwapCd = 1601`
+      );
+    });
+
+    it('should handle undefined values', () => {
+      const result = updateSwapDetails(1601, { Channel: undefined });
+      expect(result).toBe(
+        `UPDATE [MPMT].[db0].[SwapDetails] SET Channel = undefined OUTPUT INSERTED.* WHERE SwapCd = 1601`
+      );
+    });
+
+    it('should handle boolean values', () => {
+      const result = updateSwapDetails(1601, { IsActive: true });
+      expect(result).toBe(
+        `UPDATE [MPMT].[db0].[SwapDetails] SET IsActive = true OUTPUT INSERTED.* WHERE SwapCd = 1601`
+      );
+    });
+  });
+
+  describe('Error cases', () => {
+    it('should throw error when SwapCd is not provided', () => {
+      // @ts-expect-error - Testing invalid input
+      expect(() => updateSwapDetails(null, { Channel: 'offline' })).toThrow();
+    });
+
+    it('should throw error when updateDetails is not an object', () => {
+      // @ts-expect-error - Testing invalid input
+      expect(() => updateSwapDetails(1601, 'invalid')).toThrow();
+    });
+  });
+});
